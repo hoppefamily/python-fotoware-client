@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any, BinaryIO
 from urllib.parse import urljoin
 
@@ -511,6 +511,57 @@ class FotoWareClient:
         timeout: int | None = None,
         rendition: str | None = None,
     ) -> str:
+        """The URL a prepared rendition can be downloaded from, the original's
+        unless *rendition* names another.
+
+        FotoWare prepares the file in a background task and serves it under
+        that task's address for a limited time; download it promptly.
+
+        Raises:
+            APIError: If the asset has no such rendition, or a request fails
+        """
+        return self._renewing_gone_rendition(
+            lambda: self._get_rendition_url_once(asset_href, timeout=timeout, rendition=rendition)
+        )
+
+    def download_original(self, asset_href: str, *, timeout: int | None = None) -> bytes:
+        """The original file of an asset, in memory.
+
+        Raises:
+            APIError: If the request or download fails
+        """
+        return self._renewing_gone_rendition(
+            lambda: self._download_original_once(asset_href, timeout=timeout)
+        )
+
+    def _renewing_gone_rendition[T](self, attempt: Callable[[], T]) -> T:
+        """Run a rendition *attempt*; if FotoWare says its result is gone, once more.
+
+        A rendition is prepared in a background task, and FotoWare answers
+        410 Gone once that task's result has been cleaned up. The address is
+        dead then; asking it again is pointless, but a new rendition request
+        starts a new task. Seen on 2026-10-24 for a few renditions in a hundred
+        while FotoWare was otherwise healthy. The repeat counts as a retry.
+
+        A 410 arrives before any byte is written, so a destination file is
+        still untouched when the attempt is repeated.
+        """
+        try:
+            return attempt()
+        except APIError as exc:
+            if exc.status_code != 410:
+                raise
+            logger.info("Rendition gone (410); requesting it anew: %s", exc)
+            self._counters.count_retry(410, None, 0.0)
+            return attempt()
+
+    def _get_rendition_url_once(
+        self,
+        asset_href: str,
+        *,
+        timeout: int | None = None,
+        rendition: str | None = None,
+    ) -> str:
         """Get download URL using FotoWare rendition API.
 
         This method polls the rendition service until the file is ready and returns
@@ -671,7 +722,7 @@ class FotoWareClient:
                     context={"asset_href": asset_href, "polling_url": polling_url},
                 )
 
-    def download_original(self, asset_href: str, *, timeout: int | None = None) -> bytes:
+    def _download_original_once(self, asset_href: str, *, timeout: int | None = None) -> bytes:
         """Download original file using FotoWare rendition API (atomic operation).
 
         This is the recommended way to download original files. It handles the
@@ -852,11 +903,13 @@ class FotoWareClient:
             APIError: If rendition request or download fails
             NotFoundError: If asset or original rendition not found
         """
-        self._stream_to_file(
-            self.get_rendition_url(asset_href, timeout=timeout),
-            destination,
-            timeout=timeout,
-            chunk_size=chunk_size,
+        self._renewing_gone_rendition(
+            lambda: self._stream_to_file(
+                self._get_rendition_url_once(asset_href, timeout=timeout),
+                destination,
+                timeout=timeout,
+                chunk_size=chunk_size,
+            )
         )
 
     def download_rendition_to_file(
@@ -875,11 +928,13 @@ class FotoWareClient:
             APIError: If the asset has no such rendition, or its request or
                 download fails
         """
-        self._stream_to_file(
-            self.get_rendition_url(asset_href, timeout=timeout, rendition=rendition),
-            destination,
-            timeout=timeout,
-            chunk_size=chunk_size,
+        self._renewing_gone_rendition(
+            lambda: self._stream_to_file(
+                self._get_rendition_url_once(asset_href, timeout=timeout, rendition=rendition),
+                destination,
+                timeout=timeout,
+                chunk_size=chunk_size,
+            )
         )
 
     def _stream_to_file(
