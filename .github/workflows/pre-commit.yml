@@ -7,8 +7,8 @@ on:
 
 jobs:
   pre-commit:
-    # GitHub-hosted, not the org's self-hosted runner: this repo is meant to
-    # go public, and a fork's pull request must never run on our machine.
+    # GitHub-hosted only: the repository is public, and a fork's pull request
+    # must never run on a self-hosted machine.
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
