@@ -28,6 +28,8 @@ their trademarks.
 - **Retries what is transient.** urllib3's `Retry` on the session retries 429
   (honouring `Retry-After`) and 502/503/504, twice by default. A 500 is not
   retried: it was always caused by the query.
+  The waits double from 1 s and carry jitter, so parallel callers do not
+  all ask again at the same moment; a `Retry-After` is kept as sent.
 - **Counts the cost.** `cost_snapshot()` reports requests, retries, errors,
   search pages and empty search pages.
 - OAuth client credentials with automatic token refresh; context manager.

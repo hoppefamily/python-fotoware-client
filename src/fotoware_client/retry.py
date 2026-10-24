@@ -14,6 +14,7 @@ repeat only costs time. 429 and 502/503/504 are transient and are retried.
 from __future__ import annotations
 
 import logging
+import random
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from types import TracebackType
@@ -39,6 +40,11 @@ class RetryConfig:
         retry_on_status: Status codes retried. 500 deliberately not, see above.
         max_retry_after: Longest ``Retry-After`` honoured, in seconds; a longer
             one is cut to this.
+        jitter: How much of each wait is left to chance, 0 to 1. With the
+            default 0.5 a wait of 2 s becomes 1 to 2 s. Callers running many
+            requests in parallel -- the importer runs 15 -- would otherwise
+            all ask again at the same moment, just as the server recovers.
+            A ``Retry-After`` the server sends is kept as it is.
     """
 
     max_attempts: int = 3
@@ -46,16 +52,20 @@ class RetryConfig:
     max_delay: float = 30.0
     retry_on_status: frozenset[int] = field(default_factory=lambda: frozenset({429, 502, 503, 504}))
     max_retry_after: float = 60.0
+    jitter: float = 0.5
 
     def __post_init__(self) -> None:
         if self.max_attempts < 1:
             raise ValueError(f"max_attempts must be >= 1, got {self.max_attempts}")
         if self.base_delay < 0 or self.max_delay < 0 or self.max_retry_after < 0:
             raise ValueError("delays must be >= 0")
+        if not 0 <= self.jitter <= 1:
+            raise ValueError(f"jitter must be between 0 and 1, got {self.jitter}")
 
     def delay(self, retry_number: int) -> float:
-        """The wait before retry *retry_number* (1 for the first)."""
-        return float(min(self.max_delay, self.base_delay * 2 ** (retry_number - 1)))
+        """The wait before retry *retry_number* (1 for the first), with jitter."""
+        full = float(min(self.max_delay, self.base_delay * 2 ** (retry_number - 1)))
+        return random.uniform(full * (1 - self.jitter), full)
 
 
 STANDARD_RETRY = RetryConfig()

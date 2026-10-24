@@ -185,9 +185,24 @@ def test_an_unreachable_server_is_exhausted() -> None:
 
 
 def test_the_waits_double_up_to_the_cap() -> None:
-    config = RetryConfig(base_delay=1.0, max_delay=5.0)
+    config = RetryConfig(base_delay=1.0, max_delay=5.0, jitter=0)
 
     assert [config.delay(n) for n in (1, 2, 3, 4)] == [1.0, 2.0, 4.0, 5.0]
+
+
+def test_jitter_spreads_the_waits_below_the_full_backoff() -> None:
+    """Parallel workers must not all ask again at the same moment."""
+    config = RetryConfig(base_delay=2.0, max_delay=30.0)
+
+    waits = {config.delay(1) for _ in range(200)}
+
+    assert all(1.0 <= wait <= 2.0 for wait in waits)
+    assert len(waits) > 100
+
+
+def test_jitter_outside_zero_to_one_is_refused() -> None:
+    with pytest.raises(ValueError):
+        RetryConfig(jitter=1.5)
 
 
 def test_at_least_one_attempt() -> None:
