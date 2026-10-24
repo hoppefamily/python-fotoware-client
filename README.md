@@ -37,12 +37,41 @@ Measured on 2026-10-23 against FotoWeb 8.1.1223.0; details and edges in
 
 | Limit | Value |
 | --- | --- |
-| Assets per search answer | 25, fixed (`pageSize` is ignored) |
+| Assets per search answer | 25, with `pageSize` ignored. FotoWare guarantees no page size, so the client follows `paging.next` and counts nothing |
 | Cost of an answer | ~0.4 s with hits whether 1 or 25 assets; 130–220 ms empty |
 | Search size | about 2,000 by `estimate_query_size`; budget 1,500 |
 
 So the cheapest search asks for as many terms as fit the budget and fills
 whole pages.
+
+Two search settings of an installation (Site Configuration › Searching) are out
+of the client's sight:
+
+- **Maximum number of hits** caps a result set. A search with more hits ends
+  early, without saying so.
+- **Search string modification** decides how plain words without an operator
+  are combined (AND, OR or as a phrase). Write `AND`/`OR` explicitly, and the
+  setting does not matter.
+
+## Settings of an installation
+
+What a FotoWare installation may set differently, the client takes as
+`ServerSettings`; the defaults are FotoWeb's:
+
+```python
+from fotoware_client import FotoWareClient, ServerSettings
+
+settings = ServerSettings(
+    original_rendition_name="Originaldatei",  # display names are configurable
+    download_timeout=300,  # seconds per download or rendition
+    rendition_poll_interval=0.5,  # first wait while a rendition is made
+    query_size_budget=1200,  # if the installation's limit is lower
+)
+client = FotoWareClient.from_env(settings=settings)
+```
+
+Also: `oauth_token_path`, `api_descriptor_path`, `rendition_poll_interval_max`
+and `term_overhead`. See `fotoware_client/settings.py`.
 
 ## Credentials
 
@@ -93,7 +122,7 @@ All derive from `FotoWareError`:
 ## Install
 
 ```bash
-pip install "python-fotoware-client @ git+https://github.com/hoppefamily/python-fotoware-client.git@v0.1.0"
+pip install "python-fotoware-client @ git+https://github.com/hoppefamily/python-fotoware-client.git@v0.2.0"
 ```
 
 ## Development

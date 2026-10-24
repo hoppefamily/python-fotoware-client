@@ -19,10 +19,7 @@ from fotoware_client.constants import (
     ACCEPT_DOWNLOAD,
     ACCEPT_FULL_DESCRIPTOR,
     ACCEPT_JSON,
-    API_ME_PATH,
     DEFAULT_TIMEOUT,
-    DOWNLOAD_TIMEOUT,
-    OAUTH_TOKEN_PATH,
 )
 from fotoware_client.credentials import load_credentials
 from fotoware_client.exceptions import (
@@ -32,9 +29,10 @@ from fotoware_client.exceptions import (
     RateLimitError,
     RetryExhaustedError,
 )
-from fotoware_client.limits import QUERY_SIZE_BUDGET, RequestCounters, check_query_size
+from fotoware_client.limits import RequestCounters, check_query_size
 from fotoware_client.models import Archive, Asset, SearchResult
 from fotoware_client.retry import STANDARD_RETRY, RetryConfig, urllib3_retry
+from fotoware_client.settings import ServerSettings
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +57,7 @@ class FotoWareClient:
         *,
         retry_config: RetryConfig = STANDARD_RETRY,
         timeout: int = DEFAULT_TIMEOUT,
-        query_size_budget: int = QUERY_SIZE_BUDGET,
+        settings: ServerSettings | None = None,
     ) -> None:
         """Initialize FotoWare client.
 
@@ -69,8 +67,8 @@ class FotoWareClient:
             client_secret: OAuth client secret
             retry_config: Retry configuration for API requests
             timeout: Default request timeout in seconds
-            query_size_budget: Largest estimated query size sent; see
-                fotoware_client.limits
+            settings: What the installation sets differently from FotoWeb's
+                defaults; see ServerSettings
 
         Raises:
             ConfigurationError: If tenant_url is invalid or credentials missing
@@ -90,11 +88,11 @@ class FotoWareClient:
         self.tenant_url = tenant_url.rstrip("/")
         self.timeout = timeout
         self.retry_config = retry_config
-        self.query_size_budget = query_size_budget
+        self.settings = settings or ServerSettings()
         self._counters = RequestCounters()
 
         # Build OAuth token URL
-        token_url = urljoin(self.tenant_url + "/", OAUTH_TOKEN_PATH.lstrip("/"))
+        token_url = urljoin(self.tenant_url + "/", self.settings.oauth_token_path.lstrip("/"))
 
         # Initialize OAuth authenticator
         self._auth = OAuthAuthenticator(
@@ -193,7 +191,7 @@ class FotoWareClient:
             APIError: If API is unreachable or returns other errors
         """
         logger.debug("Validating FotoWare API connection")
-        me_url = urljoin(self.tenant_url + "/", API_ME_PATH.lstrip("/"))
+        me_url = urljoin(self.tenant_url + "/", self.settings.api_descriptor_path.lstrip("/"))
 
         try:
             response = self._request("GET", me_url, headers=ACCEPT_FULL_DESCRIPTOR)
@@ -325,7 +323,7 @@ class FotoWareClient:
         logger.debug("Listing archives")
 
         # The API descriptor names the archives list, as a path on the tenant
-        me_url = urljoin(self.tenant_url + "/", API_ME_PATH.lstrip("/"))
+        me_url = urljoin(self.tenant_url + "/", self.settings.api_descriptor_path.lstrip("/"))
         response = self._request("GET", me_url, headers=ACCEPT_FULL_DESCRIPTOR)
         archives_path = response.json().get("archives")
         response.close()
@@ -403,7 +401,7 @@ class FotoWareClient:
                 nothing is sent
             APIError: If the request fails
         """
-        check_query_size(query, self.query_size_budget)
+        check_query_size(query, self.settings.query_size_budget, self.settings.term_overhead)
         search_url = self.resolve(archive_href).rstrip("/") + "/"
         return self._search_page(search_url, params={"q": query})
 
@@ -500,7 +498,7 @@ class FotoWareClient:
         """
         logger.debug("Downloading from: %s", url)
 
-        response = self._request("GET", url, timeout=DOWNLOAD_TIMEOUT)
+        response = self._request("GET", url, timeout=self.settings.download_timeout)
         data = response.content
         response.close()
 
@@ -521,14 +519,14 @@ class FotoWareClient:
         (e.g., for Shopware's upload_url_to_media) rather than immediate bytes.
 
         Workflow:
-        1. Get asset metadata and find "Original File" rendition
+        1. Get asset metadata and find the original rendition
         2. Submit rendition request to rendition service
         3. Poll until ready (202 Accepted → 200 OK)
         4. Return the ready download URL
 
         Args:
             asset_href: Full URL to asset (from Asset.href or search results)
-            timeout: Total timeout for polling (default: 120s)
+            timeout: Total timeout for polling (default: settings.download_timeout)
 
         Returns:
             URL that can be used to download the original file
@@ -544,7 +542,7 @@ class FotoWareClient:
             >>> # Later: download from that URL
         """
 
-        timeout = timeout or 120  # Default 2 minutes
+        timeout = timeout or self.settings.download_timeout
         start_time = time.time()
 
         logger.debug("get_rendition_url: Starting for asset=%s", asset_href)
@@ -554,7 +552,7 @@ class FotoWareClient:
         asset_data = response.json()
         response.close()
 
-        # Step 2: Find the rendition asked for, the "Original File" unless named
+        # Step 2: Find the rendition asked for, the original unless named
         renditions = asset_data.get("renditions", [])
         original_rendition = None
 
@@ -565,7 +563,7 @@ class FotoWareClient:
                 candidate.get("display_name") == rendition
                 if rendition is not None
                 else candidate.get("original") is True
-                or candidate.get("display_name") == "Original File"
+                or candidate.get("display_name") == self.settings.original_rendition_name
             )
             if wanted:
                 original_rendition = candidate
@@ -589,7 +587,7 @@ class FotoWareClient:
         )
 
         # Step 3: Get rendition service URL
-        me_url = urljoin(self.tenant_url + "/", API_ME_PATH.lstrip("/"))
+        me_url = urljoin(self.tenant_url + "/", self.settings.api_descriptor_path.lstrip("/"))
         response = self._request("GET", me_url, headers=ACCEPT_FULL_DESCRIPTOR)
         me_data = response.json()
         response.close()
@@ -635,8 +633,8 @@ class FotoWareClient:
         logger.debug("get_rendition_url: Polling URL=%s", polling_url)
 
         # Step 5: Poll until ready (202 → 200) or timeout
-        poll_interval = 0.1  # Start with 100ms
-        max_poll_interval = 2.0  # Max 2 seconds between polls
+        poll_interval = self.settings.rendition_poll_interval
+        max_poll_interval = self.settings.rendition_poll_interval_max
 
         while True:
             elapsed = time.time() - start_time
@@ -684,7 +682,7 @@ class FotoWareClient:
 
         This is the recommended way to download original files. It handles the
         complete rendition workflow:
-        1. Get asset metadata and find "Original File" rendition
+        1. Get asset metadata and find the original rendition
         2. Submit rendition request to rendition service
         3. Poll until ready (handles 202 Accepted → 200 OK)
         4. Download and return bytes
@@ -694,7 +692,7 @@ class FotoWareClient:
 
         Args:
             asset_href: Full URL to asset (from Asset.href or search results)
-            timeout: Total timeout for the entire operation (default: 120s)
+            timeout: Total timeout for the entire operation (default: settings.download_timeout)
 
         Returns:
             Original file bytes
@@ -709,7 +707,7 @@ class FotoWareClient:
             >>> pdf_bytes = client.download_original(asset_href)
         """
 
-        timeout = timeout or 120  # Default 2 minutes for large files
+        timeout = timeout or self.settings.download_timeout
         start_time = time.time()
 
         logger.debug("download_original: Starting for asset=%s", asset_href)
@@ -719,7 +717,7 @@ class FotoWareClient:
         asset_data = response.json()
         response.close()
 
-        # Step 2: Find "Original File" rendition
+        # Step 2: Find the original rendition
         renditions = asset_data.get("renditions", [])
         original_rendition = None
 
@@ -728,7 +726,7 @@ class FotoWareClient:
                 continue
             if (
                 rendition.get("original") is True
-                or rendition.get("display_name") == "Original File"
+                or rendition.get("display_name") == self.settings.original_rendition_name
             ):
                 original_rendition = rendition
                 break
@@ -751,7 +749,7 @@ class FotoWareClient:
         )
 
         # Step 3: Get rendition service URL
-        me_url = urljoin(self.tenant_url + "/", API_ME_PATH.lstrip("/"))
+        me_url = urljoin(self.tenant_url + "/", self.settings.api_descriptor_path.lstrip("/"))
         response = self._request("GET", me_url, headers=ACCEPT_FULL_DESCRIPTOR)
         me_data = response.json()
         response.close()
@@ -798,8 +796,8 @@ class FotoWareClient:
         logger.debug("download_original: Polling URL=%s", polling_url)
 
         # Step 5: Poll until ready (202 → 200) or timeout
-        poll_interval = 0.1  # Start with 100ms
-        max_poll_interval = 2.0  # Max 2 seconds between polls
+        poll_interval = self.settings.rendition_poll_interval
+        max_poll_interval = self.settings.rendition_poll_interval_max
 
         while True:
             elapsed = time.time() - start_time
@@ -858,7 +856,7 @@ class FotoWareClient:
         Args:
             asset_href: Full URL to asset (from Asset.href or search results)
             destination: Writable binary file-like object
-            timeout: Total timeout for the entire operation (default: 120s)
+            timeout: Total timeout for the entire operation (default: settings.download_timeout)
             chunk_size: Streaming chunk size in bytes
 
         Raises:
