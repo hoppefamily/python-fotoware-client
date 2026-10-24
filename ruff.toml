@@ -1,0 +1,18 @@
+line-length = 100
+target-version = "py314"
+
+[lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = ["E501"]  # line length is the formatter's business
+
+[lint.per-file-ignores]
+# A vulture whitelist is a list of names written as bare expressions.
+"vulture_whitelist.py" = ["B018", "F821"]

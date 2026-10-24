@@ -1,0 +1,28 @@
+name: pre-commit
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  pre-commit:
+    # GitHub-hosted only: the repository is public, and a fork's pull request
+    # must never run on a self-hosted machine.
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - uses: actions/setup-python@v7
+      with:
+        python-version: '3.14'
+    # pre-commit directly rather than pre-commit/action: the action restores
+    # the hook environments from GitHub's cache, which over the mini's home
+    # line costs more than it saves. The mini keeps ~/.cache/pre-commit.
+    - name: Install pre-commit
+      run: python -m pip install pre-commit
+    # no-commit-to-branch guards local commits. A push to main is on main by
+    # definition, so in CI the hook failed every such run.
+    - name: Run pre-commit on all files
+      env:
+        SKIP: no-commit-to-branch
+      run: pre-commit run --all-files --show-diff-on-failure --color always

@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "python-fotoware-client"
+version = "0.4.0"
+description = "A thin, honest client for the FotoWare API: one call, one request; refuses queries FotoWare would answer wrongly; counts what each request costs"
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["fotoware", "fotoweb", "api", "client"]
+authors = [{ name = "Michael Hoppe" }]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+]
+dependencies = [
+    "requests>=2.31.0",
+    "urllib3>=2.6.3,<3",
+]
+
+[project.urls]
+Homepage = "https://github.com/hoppefamily/python-fotoware-client"
+Source = "https://github.com/hoppefamily/python-fotoware-client"
+Issues = "https://github.com/hoppefamily/python-fotoware-client/issues"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.vulture]
+# src/ and any scripts, deliberately without tests/: a function whose only
+# caller is its own test then has no caller at all and gets reported. With
+# tests/ in this list it would look used, which is how such code survives --
+# coverage counts a test as an execution, so it even reads as fully covered.
+# Add every other directory that holds callers (scripts/, utility/, ...), or
+# their code will be reported as dead.
+paths = ["src", "vulture_whitelist.py"]
+# 60, because that is where vulture reports an unused *function*. At 80 it
+# only states what it is certain of -- unused imports, unreachable code, dead
+# variables -- and ruff already catches most of that, so a gate at 80 lets an
+# uncalled function straight through. Tried and measured, not assumed.
+#
+# 60 also guesses. In a repo that starts here the guesses are few; in one that
+# adopts this later, run `vulture --make-whitelist` once and commit the result
+# as a baseline, so the gate speaks only about code written from then on.
+min_confidence = 60
+sort_by_size = true
