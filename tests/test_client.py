@@ -4,6 +4,7 @@ import io
 from unittest.mock import Mock, patch
 
 import pytest
+import requests
 
 from fotoware_client.client import FotoWareClient
 from fotoware_client.exceptions import APIError, ConfigurationError
@@ -508,3 +509,37 @@ class TestFotoWareClientRenditionChoice:
             pytest.raises(APIError, match="No Large rendition"),
         ):
             client.get_rendition_url("https://fotoware.example.com/asset/1.info", rendition="Large")
+
+
+class TestResponsesAreClosed:
+    """Every response goes back to the pool, whatever its body holds."""
+
+    @patch("fotoware_client.client.OAuthAuthenticator")
+    def test_an_unreadable_answer_is_closed(self, mock_auth: Mock) -> None:
+        client = FotoWareClient("https://fotoware.example.com", "id", "secret")
+        response = Mock()
+        response.json.side_effect = requests.JSONDecodeError("invalid json", "", 0)
+
+        with patch.object(client, "_request", return_value=response):
+            with pytest.raises(requests.JSONDecodeError):
+                client.get_asset("/a/1.jpg.info")
+
+        response.close.assert_called_once()
+
+    @patch("fotoware_client.client.OAuthAuthenticator")
+    def test_a_rendition_request_answered_with_a_location_is_closed(self, mock_auth: Mock) -> None:
+        client = FotoWareClient("https://fotoware.example.com", "id", "secret")
+        asset = Mock()
+        asset.json.return_value = {"renditions": [{"original": True, "href": "/r/1"}]}
+        descriptor = Mock()
+        descriptor.json.return_value = {
+            "services": {"rendition_request": "/fotoweb/services/renditions"}
+        }
+        requested = Mock(status_code=202, headers={"Location": "/fotoweb/poll/1"})
+        ready = Mock(status_code=200)
+
+        with patch.object(client, "_request", side_effect=[asset, descriptor, requested, ready]):
+            client.get_rendition_url("/a/1.jpg.info")
+
+        requested.close.assert_called_once()
+        requested.json.assert_not_called()
