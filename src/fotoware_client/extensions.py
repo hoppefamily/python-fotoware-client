@@ -83,20 +83,32 @@ class Rendition:
     was seen for a few renditions in a hundred on 2026-10-24 while FotoWare
     was otherwise healthy.
 
-    The waits between polls and the time a rendition may take come from the
-    client's ServerSettings.
+    The waits between polls come from the client's ServerSettings, and so
+    does the time a rendition may take unless *timeout* says otherwise.
 
     Args:
         client: The FotoWare client.
         asset_href: The asset, as a path on the tenant or a full URL.
         name: The rendition's display name, such as "Medium (JPG, 3000px)";
             None for the original file.
+        timeout: Seconds the rendition may take to become ready; None for the
+            client's ``ServerSettings.download_timeout``.
     """
 
-    def __init__(self, client: FotoWareClient, asset_href: str, name: str | None = None) -> None:
+    def __init__(
+        self,
+        client: FotoWareClient,
+        asset_href: str,
+        name: str | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> None:
+        if timeout is not None and timeout <= 0:
+            raise ValueError("timeout must be positive")
         self._client = client
         self.asset_href = asset_href
         self.name = name
+        self.timeout = timeout
 
     def url(self) -> str:
         """The address the prepared file can be fetched from, for a while.
@@ -130,6 +142,7 @@ class Rendition:
     def _prepare(self, destination: BinaryIO | None) -> str:
         """Request the rendition and poll its task until the file is ready."""
         settings = self._client.settings
+        timeout = self.timeout if self.timeout is not None else settings.download_timeout
         rendition_href = self._rendition_href()
         service_href = (self._client.get_api_descriptor().get("services") or {}).get(
             "rendition_request"
@@ -137,12 +150,12 @@ class Rendition:
         if not service_href:
             raise APIError("The API descriptor names no rendition service")
         task_href = self._client.request_rendition(service_href, rendition_href)
-        deadline = time.monotonic() + settings.download_timeout
+        deadline = time.monotonic() + timeout
         wait = settings.rendition_poll_interval
         while not self._client.get_rendition_task(task_href, destination):
             if time.monotonic() + wait > deadline:
                 raise APIError(
-                    f"Rendition not ready after {settings.download_timeout}s",
+                    f"Rendition not ready after {timeout}s",
                     context={"asset_href": self.asset_href, "task_href": task_href},
                 )
             time.sleep(wait)
