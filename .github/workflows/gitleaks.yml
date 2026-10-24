@@ -1,0 +1,21 @@
+name: gitleaks
+
+# Secret scanning, run by the org's shared workflow; see
+# https://github.com/foerdebaumarkt/.github/blob/main/docs/gitleaks.md
+# Pull requests and pushes are scanned for their own commits, the weekly run
+# reads the whole history.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    uses: foerdebaumarkt/.github/.github/workflows/gitleaks.yml@gitleaks-v1
