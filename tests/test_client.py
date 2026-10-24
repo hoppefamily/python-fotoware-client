@@ -7,7 +7,7 @@ import pytest
 import requests
 
 from fotoware_client.client import FotoWareClient
-from fotoware_client.exceptions import APIError, ConfigurationError
+from fotoware_client.exceptions import ConfigurationError
 from fotoware_client.limits import QueryTooLargeError
 
 
@@ -108,70 +108,6 @@ class TestFotoWareClientContextManager:
         mock_session.close.assert_called_once()
 
 
-class TestFotoWareClientListArchives:
-    """Tests for list_archives method."""
-
-    @patch("fotoware_client.client.OAuthAuthenticator")
-    def test_list_archives_success(self, mock_auth: Mock) -> None:
-        """Test successful archive listing."""
-        mock_auth.return_value.get_access_token.return_value = "token123"
-
-        client = FotoWareClient(
-            tenant_url="https://fotoware.example.com",
-            client_id="test_client",
-            client_secret="test_secret",
-        )
-
-        # Mock API responses
-        me_response = Mock()
-        me_response.json.return_value = {"archives": "/fotoweb/me/archives/"}
-
-        archives_response = Mock()
-        archives_response.json.return_value = {
-            "data": [
-                {
-                    "href": "https://fotoware.example.com/archive/1",
-                    "name": "Archive 1",
-                },
-                {
-                    "href": "https://fotoware.example.com/archive/2",
-                    "displayName": "Archive 2",
-                },
-            ]
-        }
-
-        with patch.object(
-            client, "_request", side_effect=[me_response, archives_response]
-        ) as request:
-            archives = client.list_archives()
-
-        assert request.call_args.args[1] == "https://fotoware.example.com/fotoweb/me/archives/"
-
-        assert len(archives) == 2
-        assert archives[0].name == "Archive 1"
-        assert archives[1].name == "Archive 2"
-
-    @patch("fotoware_client.client.OAuthAuthenticator")
-    def test_list_archives_no_link(self, mock_auth: Mock) -> None:
-        """Test error when no archives link found."""
-        mock_auth.return_value.get_access_token.return_value = "token123"
-
-        client = FotoWareClient(
-            tenant_url="https://fotoware.example.com",
-            client_id="test_client",
-            client_secret="test_secret",
-        )
-
-        me_response = Mock()
-        me_response.json.return_value = {}
-
-        with patch.object(client, "_request", return_value=me_response):
-            with pytest.raises(APIError) as exc_info:
-                client.list_archives()
-
-        assert "No archives link found" in str(exc_info.value)
-
-
 def _page(*filenames: str, next_href: str = "") -> Mock:
     response = Mock()
     response.json.return_value = {
@@ -209,43 +145,23 @@ class TestHrefsFromAnswers:
         response.close.assert_called_once()
 
     @patch("fotoware_client.client.OAuthAuthenticator")
-    def test_get_field_labels_resolves_an_archive_path(self, mock_auth: Mock) -> None:
-        client = FotoWareClient("https://fotoware.example.com", "id", "secret")
-        archive = Mock()
-        archive.json.return_value = {"metadataEditor": {"href": "/fotoweb/editors/1"}}
-        editor = Mock()
-        editor.json.return_value = {
-            "detailRegions": [{"fields": [{"field": {"id": 631, "label": "EAN"}}]}]
-        }
-
-        with patch.object(client, "_request", side_effect=[archive, editor]) as request:
-            labels = client.get_field_labels("/fotoweb/archives/5000-Products/")
-
-        assert request.call_args_list[0].args[1] == (
-            "https://fotoware.example.com/fotoweb/archives/5000-Products/"
-        )
-        assert labels == {"631": "EAN"}
-
-    @patch("fotoware_client.client.OAuthAuthenticator")
     def test_a_full_url_stays_as_it_is(self, mock_auth: Mock) -> None:
         client = FotoWareClient("https://fotoware.example.com", "id", "secret")
 
         assert client.resolve("https://other.example.com/x") == "https://other.example.com/x"
 
 
-class TestFotoWareClientSearchAssets:
+class TestSearch:
     """One request per page; the caller follows the pages."""
 
     @patch("fotoware_client.client.OAuthAuthenticator")
-    def test_search_assets_returns_one_page(self, mock_auth: Mock) -> None:
+    def test_search_returns_one_page(self, mock_auth: Mock) -> None:
         client = FotoWareClient("https://fotoware.example.com", "id", "secret")
 
         with patch.object(
             client, "_request", return_value=_page("a.jpg", next_href="/fotoweb/archives/5000/?p=1")
         ) as request:
-            page = client.search_assets(
-                "https://fotoware.example.com/fotoweb/archives/5000", "631:1"
-            )
+            page = client.search("https://fotoware.example.com/fotoweb/archives/5000", "631:1")
 
         assert [asset.filename for asset in page.assets] == ["a.jpg"]
         assert page.next_href == "/fotoweb/archives/5000/?p=1"
@@ -259,7 +175,7 @@ class TestFotoWareClientSearchAssets:
         client = FotoWareClient("https://fotoware.example.com", "id", "secret")
 
         with patch.object(client, "_request", return_value=_page()) as request:
-            client.search_assets("/fotoweb/archives/5000-Products/", "631:1")
+            client.search("/fotoweb/archives/5000-Products/", "631:1")
 
         assert (
             request.call_args.args[1]
@@ -267,34 +183,13 @@ class TestFotoWareClientSearchAssets:
         )
 
     @patch("fotoware_client.client.OAuthAuthenticator")
-    def test_iter_search_follows_the_pages(self, mock_auth: Mock) -> None:
-        client = FotoWareClient("https://fotoware.example.com", "id", "secret")
-        pages = [_page("a.jpg", next_href="/fotoweb/archives/5000/?p=1"), _page("b.jpg")]
-
-        with patch.object(client, "_request", side_effect=pages) as request:
-            found = [
-                asset.filename
-                for page in client.iter_search(
-                    "https://fotoware.example.com/fotoweb/archives/5000/", "*"
-                )
-                for asset in page.assets
-            ]
-
-        assert found == ["a.jpg", "b.jpg"]
-        assert (
-            request.call_args.args[1] == "https://fotoware.example.com/fotoweb/archives/5000/?p=1"
-        )
-
-    @patch("fotoware_client.client.OAuthAuthenticator")
     def test_the_last_page_has_no_next(self, mock_auth: Mock) -> None:
         client = FotoWareClient("https://fotoware.example.com", "id", "secret")
 
         with patch.object(client, "_request", return_value=_page()):
-            page = client.search_assets(
-                "https://fotoware.example.com/fotoweb/archives/5000/", "631:1"
-            )
+            page = client.search("https://fotoware.example.com/fotoweb/archives/5000/", "631:1")
 
-        assert client.next_page(page) is None
+        assert page.next_href is None
 
     @patch("fotoware_client.client.OAuthAuthenticator")
     def test_a_query_over_the_budget_is_not_sent(self, mock_auth: Mock) -> None:
@@ -303,7 +198,7 @@ class TestFotoWareClientSearchAssets:
 
         with patch.object(client, "_request") as request:
             with pytest.raises(QueryTooLargeError) as exc_info:
-                client.search_assets("https://fotoware.example.com/fotoweb/archives/5000/", query)
+                client.search("https://fotoware.example.com/fotoweb/archives/5000/", query)
 
         request.assert_not_called()
         assert exc_info.value.budget == 1500
@@ -313,202 +208,12 @@ class TestFotoWareClientSearchAssets:
         client = FotoWareClient("https://fotoware.example.com", "id", "secret")
 
         with patch.object(client, "_request", side_effect=[_page("a.jpg"), _page()]):
-            client.search_assets("https://fotoware.example.com/fotoweb/archives/5000/", "631:1")
-            client.search_assets("https://fotoware.example.com/fotoweb/archives/5000/", "631:2")
+            client.search("https://fotoware.example.com/fotoweb/archives/5000/", "631:1")
+            client.search("https://fotoware.example.com/fotoweb/archives/5000/", "631:2")
 
         snapshot = client.cost_snapshot()
         assert snapshot["search_pages"] == 2
         assert snapshot["empty_search_pages"] == 1
-
-
-class TestFotoWareClientGetDownloadUrl:
-    """Tests for get_download_url method."""
-
-    @patch("fotoware_client.client.OAuthAuthenticator")
-    def test_get_download_url_direct(self, mock_auth: Mock) -> None:
-        """Test getting download URL directly from attributes."""
-        mock_auth.return_value.get_access_token.return_value = "token123"
-
-        client = FotoWareClient(
-            tenant_url="https://fotoware.example.com",
-            client_id="test_client",
-            client_secret="test_secret",
-        )
-
-        response = Mock()
-        response.json.return_value = {
-            "attributes": {"downloadUrl": "https://cdn.example.com/asset.jpg"}
-        }
-
-        with patch.object(client, "_request", return_value=response):
-            url = client.get_download_url("https://fotoware.example.com/asset/1")
-
-        assert url == "https://cdn.example.com/asset.jpg"
-
-    @patch("fotoware_client.client.OAuthAuthenticator")
-    def test_get_download_url_via_link(self, mock_auth: Mock) -> None:
-        """Test getting download URL via download link."""
-        mock_auth.return_value.get_access_token.return_value = "token123"
-
-        client = FotoWareClient(
-            tenant_url="https://fotoware.example.com",
-            client_id="test_client",
-            client_secret="test_secret",
-        )
-
-        asset_response = Mock()
-        asset_response.json.return_value = {
-            "_links": {
-                "download": {"rel": "download", "href": "https://fotoware.example.com/download/1"}
-            }
-        }
-
-        download_response = Mock()
-        download_response.json.return_value = {"url": "https://cdn.example.com/asset.jpg"}
-
-        with patch.object(client, "_request", side_effect=[asset_response, download_response]):
-            url = client.get_download_url("https://fotoware.example.com/asset/1")
-
-        assert url == "https://cdn.example.com/asset.jpg"
-
-
-class TestFotoWareClientDownloadBytes:
-    """Tests for download_bytes method."""
-
-    @patch("fotoware_client.client.OAuthAuthenticator")
-    def test_download_bytes_success(self, mock_auth: Mock) -> None:
-        """Test successful binary download."""
-        mock_auth.return_value.get_access_token.return_value = "token123"
-
-        client = FotoWareClient(
-            tenant_url="https://fotoware.example.com",
-            client_id="test_client",
-            client_secret="test_secret",
-        )
-
-        response = Mock()
-        response.content = b"binary data"
-
-        with patch.object(client, "_request", return_value=response):
-            data = client.download_bytes("https://cdn.example.com/asset.jpg")
-
-        assert data == b"binary data"
-
-
-class TestFotoWareClientDownloadOriginalToFile:
-    """Tests for download_original_to_file method."""
-
-    @patch("fotoware_client.client.OAuthAuthenticator")
-    def test_download_original_to_file_success(self, mock_auth: Mock) -> None:
-        """Stream the original rendition into a writable file object."""
-        mock_auth.return_value.get_access_token.return_value = "token123"
-
-        client = FotoWareClient(
-            tenant_url="https://fotoware.example.com",
-            client_id="test_client",
-            client_secret="test_secret",
-        )
-
-        response = Mock()
-        response.iter_content.return_value = [b"binary ", b"data"]
-        response.close = Mock()
-        destination = io.BytesIO()
-
-        with (
-            patch.object(
-                client,
-                "_get_rendition_url_once",
-                return_value="https://fotoware.example.com/renditions/file.bin",
-            ) as mock_get_rendition_url,
-            patch.object(
-                client,
-                "_request",
-                return_value=response,
-            ) as mock_request,
-        ):
-            client.download_original_to_file(
-                "https://fotoware.example.com/asset/1.info",
-                destination,
-                timeout=45,
-                chunk_size=4,
-            )
-
-        assert destination.getvalue() == b"binary data"
-        mock_get_rendition_url.assert_called_once_with(
-            "https://fotoware.example.com/asset/1.info",
-            timeout=45,
-        )
-        mock_request.assert_called_once_with(
-            "GET",
-            "https://fotoware.example.com/renditions/file.bin",
-            timeout=45,
-            stream=True,
-        )
-        response.close.assert_called_once()
-
-    @patch("fotoware_client.client.OAuthAuthenticator")
-    def test_download_rendition_to_file_asks_for_the_named_rendition(self, mock_auth: Mock) -> None:
-        mock_auth.return_value.get_access_token.return_value = "token123"
-        client = FotoWareClient(
-            tenant_url="https://fotoware.example.com",
-            client_id="test_client",
-            client_secret="test_secret",
-        )
-        response = Mock()
-        response.iter_content.return_value = [b"jpeg"]
-        destination = io.BytesIO()
-
-        with (
-            patch.object(
-                client,
-                "_get_rendition_url_once",
-                return_value="https://fotoware.example.com/renditions/medium.jpg",
-            ) as mock_get_rendition_url,
-            patch.object(client, "_request", return_value=response),
-        ):
-            client.download_rendition_to_file(
-                "https://fotoware.example.com/asset/1.info",
-                destination,
-                rendition="Medium (JPG, 3000px)",
-                timeout=45,
-            )
-
-        assert destination.getvalue() == b"jpeg"
-        mock_get_rendition_url.assert_called_once_with(
-            "https://fotoware.example.com/asset/1.info",
-            timeout=45,
-            rendition="Medium (JPG, 3000px)",
-        )
-
-
-class TestFotoWareClientRenditionChoice:
-    """get_rendition_url picks the rendition by its display name."""
-
-    @staticmethod
-    def asset_response() -> Mock:
-        response = Mock()
-        response.json.return_value = {
-            "renditions": [
-                {"display_name": "Original File", "original": True, "href": "/r/orig"},
-                {"display_name": "Medium (JPG, 3000px)", "href": "/r/medium"},
-            ]
-        }
-        return response
-
-    @patch("fotoware_client.client.OAuthAuthenticator")
-    def test_an_unknown_rendition_is_an_error(self, mock_auth: Mock) -> None:
-        mock_auth.return_value.get_access_token.return_value = "token123"
-        client = FotoWareClient(
-            tenant_url="https://fotoware.example.com",
-            client_id="test_client",
-            client_secret="test_secret",
-        )
-
-        with (
-            patch.object(client, "_request", return_value=self.asset_response()),
-            pytest.raises(APIError, match="No Large rendition"),
-        ):
-            client.get_rendition_url("https://fotoware.example.com/asset/1.info", rendition="Large")
 
 
 class TestResponsesAreClosed:
@@ -526,99 +231,75 @@ class TestResponsesAreClosed:
 
         response.close.assert_called_once()
 
+
+class TestPages:
     @patch("fotoware_client.client.OAuthAuthenticator")
-    def test_a_rendition_request_answered_with_a_location_is_closed(self, mock_auth: Mock) -> None:
+    def test_get_page_follows_a_next_href(self, mock_auth: Mock) -> None:
         client = FotoWareClient("https://fotoware.example.com", "id", "secret")
-        asset = Mock()
-        asset.json.return_value = {"renditions": [{"original": True, "href": "/r/1"}]}
-        descriptor = Mock()
-        descriptor.json.return_value = {
-            "services": {"rendition_request": "/fotoweb/services/renditions"}
-        }
-        requested = Mock(status_code=202, headers={"Location": "/fotoweb/poll/1"})
-        ready = Mock(status_code=200)
 
-        with patch.object(client, "_request", side_effect=[asset, descriptor, requested, ready]):
-            client.get_rendition_url("/a/1.jpg.info")
+        with patch.object(client, "_request", return_value=_page("b.jpg")) as request:
+            page = client.get_page("/fotoweb/archives/5000/?p=1")
 
-        requested.close.assert_called_once()
-        requested.json.assert_not_called()
+        assert [asset.filename for asset in page.assets] == ["b.jpg"]
+        assert (
+            request.call_args.args[1] == "https://fotoware.example.com/fotoweb/archives/5000/?p=1"
+        )
 
 
-class TestGoneRenditions:
-    """A rendition whose background task is gone (410) is requested anew, once."""
-
-    @staticmethod
-    def _gone() -> APIError:
-        return APIError("HTTP 410 error", status_code=410)
+class TestRenditionCalls:
+    """The two API calls a rendition takes: the request, and its task."""
 
     @patch("fotoware_client.client.OAuthAuthenticator")
-    def test_a_gone_rendition_is_requested_anew(self, mock_auth: Mock) -> None:
+    def test_request_rendition_names_the_task(self, mock_auth: Mock) -> None:
         client = FotoWareClient("https://fotoware.example.com", "id", "secret")
+        answer = Mock(headers={"Location": "/fotoweb/me/background-tasks/1/0/x.jpg"})
+
+        with patch.object(client, "_request", return_value=answer) as request:
+            task = client.request_rendition("/fotoweb/services/renditions", "/r/1")
+
+        assert task == "https://fotoware.example.com/fotoweb/me/background-tasks/1/0/x.jpg"
+        assert request.call_args.args[:2] == (
+            "POST",
+            "https://fotoware.example.com/fotoweb/services/renditions",
+        )
+        assert request.call_args.kwargs["json"] == {"href": "https://fotoware.example.com/r/1"}
+        answer.json.assert_not_called()
+        answer.close.assert_called_once()
+
+    @patch("fotoware_client.client.OAuthAuthenticator")
+    def test_a_task_not_ready_writes_nothing(self, mock_auth: Mock) -> None:
+        client = FotoWareClient("https://fotoware.example.com", "id", "secret")
+        answer = Mock(status_code=202)
         destination = io.BytesIO()
 
-        def stream(url: str, dest: io.BytesIO, **_: object) -> None:
-            if url.endswith("/task-1/file.jpg"):
-                raise self._gone()
-            dest.write(b"jpeg")
+        with patch.object(client, "_request", return_value=answer):
+            assert client.get_rendition_task("/t/1", destination) is False
 
-        with (
-            patch.object(
-                client,
-                "_get_rendition_url_once",
-                side_effect=["https://f/task-1/file.jpg", "https://f/task-2/file.jpg"],
-            ) as rendition_url,
-            patch.object(client, "_stream_to_file", side_effect=stream),
-        ):
-            client.download_rendition_to_file(
-                "/a/1.jpg.info", destination, rendition="Medium (JPG, 3000px)"
-            )
+        assert destination.getvalue() == b""
+        answer.close.assert_called_once()
 
-        assert rendition_url.call_count == 2
+    @patch("fotoware_client.client.OAuthAuthenticator")
+    def test_a_ready_task_writes_its_file_in_the_same_request(self, mock_auth: Mock) -> None:
+        client = FotoWareClient("https://fotoware.example.com", "id", "secret")
+        answer = Mock(status_code=200)
+        answer.iter_content.return_value = [b"jp", b"eg"]
+        destination = io.BytesIO()
+
+        with patch.object(client, "_request", return_value=answer) as request:
+            assert client.get_rendition_task("/t/1", destination) is True
+
         assert destination.getvalue() == b"jpeg"
-        assert client.cost_snapshot()["retries_by_status"] == {"410": 1}
+        assert request.call_count == 1
+        assert request.call_args.kwargs["stream"] is True
+        answer.close.assert_called_once()
 
     @patch("fotoware_client.client.OAuthAuthenticator")
-    def test_a_rendition_gone_twice_is_an_error(self, mock_auth: Mock) -> None:
+    def test_a_ready_task_without_destination_downloads_nothing(self, mock_auth: Mock) -> None:
         client = FotoWareClient("https://fotoware.example.com", "id", "secret")
+        answer = Mock(status_code=200)
 
-        with (
-            patch.object(client, "_get_rendition_url_once", return_value="https://f/t/x.jpg"),
-            patch.object(client, "_stream_to_file", side_effect=self._gone()) as stream,
-        ):
-            with pytest.raises(APIError) as exc_info:
-                client.download_original_to_file("/a/1.jpg.info", io.BytesIO())
+        with patch.object(client, "_request", return_value=answer):
+            assert client.get_rendition_task("/t/1") is True
 
-        assert exc_info.value.status_code == 410
-        assert stream.call_count == 2
-
-    @patch("fotoware_client.client.OAuthAuthenticator")
-    def test_other_errors_are_not_repeated(self, mock_auth: Mock) -> None:
-        client = FotoWareClient("https://fotoware.example.com", "id", "secret")
-
-        with (
-            patch.object(client, "_get_rendition_url_once", return_value="https://f/t/x.jpg"),
-            patch.object(
-                client,
-                "_stream_to_file",
-                side_effect=APIError("HTTP 403 error", status_code=403),
-            ) as stream,
-        ):
-            with pytest.raises(APIError):
-                client.download_original_to_file("/a/1.jpg.info", io.BytesIO())
-
-        assert stream.call_count == 1
-
-    @patch("fotoware_client.client.OAuthAuthenticator")
-    def test_a_rendition_gone_while_polling_is_requested_anew(self, mock_auth: Mock) -> None:
-        client = FotoWareClient("https://fotoware.example.com", "id", "secret")
-
-        with patch.object(
-            client,
-            "_get_rendition_url_once",
-            side_effect=[self._gone(), "https://f/task-2/file.jpg"],
-        ):
-            assert client.get_rendition_url("/a/1.jpg.info") == "https://f/task-2/file.jpg"
-
-        with patch.object(client, "_download_original_once", side_effect=[self._gone(), b"bytes"]):
-            assert client.download_original("/a/1.jpg.info") == b"bytes"
+        answer.iter_content.assert_not_called()
+        answer.close.assert_called_once()

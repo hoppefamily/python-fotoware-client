@@ -12,18 +12,24 @@ their trademarks.
 
 ## What it does
 
-- **One call is one request.** `search_assets` returns one page; `next_page`
-  and `iter_search` follow `paging.next`. Nothing is batched or asked again
-  behind the caller's back. The only exception are the rendition downloads,
-  which poll until FotoWare has prepared the file.
+- **One method per API call, one request each.** `FotoWareClient` mirrors
+  FotoWare's REST API: `get_api_descriptor`, `get_archives`, `get_archive`,
+  `get_metadata_editor`, `search` (one page), `get_page`, `get_asset`,
+  `request_rendition`, `get_rendition_task`. Nothing is batched or asked again
+  behind the caller's back.
+- **Extensions for what takes several calls.** `fotoware_client.extensions`
+  builds on those methods alone: `list_archives`, `field_labels`, `iter_search`
+  over every page, and `Rendition` for a file from request to download.
 - **Refuses a query FotoWare would answer wrongly.** Over FotoWare's size limit
   a search comes back as a 500 or, worse, as an empty list that looks exactly
-  like "no hits". `search_assets` estimates the query first and raises
+  like "no hits". `search` estimates the query first and raises
   `QueryTooLargeError` over the budget, without sending it.
   `estimate_query_size` is public, so callers can batch to stay under it.
 - **Retries what is transient.** urllib3's `Retry` on the session retries 429
   (honouring `Retry-After`) and 502/503/504, twice by default. A 500 is not
   retried: it was always caused by the query.
+  The waits double from 1 s and carry jitter, so parallel callers do not
+  all ask again at the same moment; a `Retry-After` is kept as sent.
 - **Counts the cost.** `cost_snapshot()` reports requests, retries, errors,
   search pages and empty search pages.
 - OAuth client credentials with automatic token refresh; context manager.
@@ -90,20 +96,25 @@ shell history.
 
 ```python
 from fotoware_client import FotoWareClient
+from fotoware_client.extensions import Rendition, iter_search, list_archives
 
 with FotoWareClient.from_env() as client:
-    archive = next(
-        a for a in client.list_archives() if a.href.startswith("/fotoweb/archives/5000-")
-    )
+    archive = next(a for a in list_archives(client) if a.href.startswith("/fotoweb/archives/5000-"))
     query = "(631:4000000000001 OR 631:4000000000002) AND (dt:image OR dt:graphic)"
-    for page in client.iter_search(archive.href, query):
+    for page in iter_search(client, archive.href, query):
         for asset in page.assets:
             print(asset.filename)
+
+    Rendition(client, asset.href).save("original.jpg")
+    data = Rendition(client, asset.href, "Medium (JPG, 3000px)").read()
     print(client.cost_snapshot())
 ```
 
-Other calls: `get_asset`, `get_field_labels`, `get_rendition_url`, `download_original`,
-`download_original_to_file`, `download_rendition_to_file`, `download_bytes`.
+`Rendition(client, href, name=None)` asks FotoWare to prepare the original, or
+the rendition with that display name, polls the task, and downloads the file
+in the poll that finds it ready: `.save(path)`, `.read()`, `.write_to(file)`,
+or `.url()` for the prepared address alone. A task FotoWare has already
+cleaned up (410 Gone) is requested anew, once.
 
 ## Errors
 

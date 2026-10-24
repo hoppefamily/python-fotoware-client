@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from fotoware_client import FotoWareClient, QueryTooLargeError, ServerSettings, estimate_query_size
+from fotoware_client.extensions import list_archives
 
 
 def _client(settings: ServerSettings) -> FotoWareClient:
@@ -46,34 +47,9 @@ def test_the_api_descriptor_path_is_the_installations() -> None:
     archives.json.return_value = {"data": []}
 
     with patch.object(client, "_request", side_effect=[me, archives]) as request:
-        client.list_archives()
+        list_archives(client)
 
     assert request.call_args_list[0].args[1] == "https://fotoware.example.com/dam/me"
-
-
-def test_a_renamed_original_rendition_is_found() -> None:
-    """Display names are configurable and translated; the flag may be missing."""
-    client = _client(ServerSettings(original_rendition_name="Originaldatei"))
-    asset = Mock()
-    asset.json.return_value = {
-        "renditions": [
-            {"display_name": "Vorschau", "href": "/r/1"},
-            {"display_name": "Originaldatei", "href": "/r/2"},
-        ]
-    }
-    descriptor = Mock()
-    descriptor.json.return_value = {
-        "services": {"rendition_request": "/fotoweb/services/renditions"}
-    }
-    requested = Mock(status_code=202, headers={"Location": "/fotoweb/poll/1"})
-    ready = Mock(status_code=200)
-
-    with patch.object(
-        client, "_request", side_effect=[asset, descriptor, requested, ready]
-    ) as request:
-        client.get_rendition_url("/a/1.jpg.info")
-
-    assert request.call_args_list[2].kwargs["json"]["href"].endswith("/r/2")
 
 
 def test_the_query_budget_and_term_overhead_are_the_installations() -> None:
@@ -81,7 +57,7 @@ def test_the_query_budget_and_term_overhead_are_the_installations() -> None:
 
     with patch.object(client, "_request") as request:
         with pytest.raises(QueryTooLargeError) as exc_info:
-            client.search_assets("/fotoweb/archives/5000-Products/", "631:1 OR 631:2 OR 631:3")
+            client.search("/fotoweb/archives/5000-Products/", "631:1 OR 631:2 OR 631:3")
 
     request.assert_not_called()
     assert exc_info.value.estimated_size == estimate_query_size("631:1 OR 631:2 OR 631:3", 40)
