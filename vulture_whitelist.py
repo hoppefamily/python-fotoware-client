@@ -34,6 +34,7 @@ download_bytes
 download_original
 download_original_to_file
 download_rendition_to_file
+get_rendition_url
 invalidate
 get_field
 get_field_values

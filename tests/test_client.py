@@ -417,7 +417,7 @@ class TestFotoWareClientDownloadOriginalToFile:
         with (
             patch.object(
                 client,
-                "get_rendition_url",
+                "_get_rendition_url_once",
                 return_value="https://fotoware.example.com/renditions/file.bin",
             ) as mock_get_rendition_url,
             patch.object(
@@ -461,7 +461,7 @@ class TestFotoWareClientDownloadOriginalToFile:
         with (
             patch.object(
                 client,
-                "get_rendition_url",
+                "_get_rendition_url_once",
                 return_value="https://fotoware.example.com/renditions/medium.jpg",
             ) as mock_get_rendition_url,
             patch.object(client, "_request", return_value=response),
@@ -543,3 +543,82 @@ class TestResponsesAreClosed:
 
         requested.close.assert_called_once()
         requested.json.assert_not_called()
+
+
+class TestGoneRenditions:
+    """A rendition whose background task is gone (410) is requested anew, once."""
+
+    @staticmethod
+    def _gone() -> APIError:
+        return APIError("HTTP 410 error", status_code=410)
+
+    @patch("fotoware_client.client.OAuthAuthenticator")
+    def test_a_gone_rendition_is_requested_anew(self, mock_auth: Mock) -> None:
+        client = FotoWareClient("https://fotoware.example.com", "id", "secret")
+        destination = io.BytesIO()
+
+        def stream(url: str, dest: io.BytesIO, **_: object) -> None:
+            if url.endswith("/task-1/file.jpg"):
+                raise self._gone()
+            dest.write(b"jpeg")
+
+        with (
+            patch.object(
+                client,
+                "_get_rendition_url_once",
+                side_effect=["https://f/task-1/file.jpg", "https://f/task-2/file.jpg"],
+            ) as rendition_url,
+            patch.object(client, "_stream_to_file", side_effect=stream),
+        ):
+            client.download_rendition_to_file(
+                "/a/1.jpg.info", destination, rendition="Medium (JPG, 3000px)"
+            )
+
+        assert rendition_url.call_count == 2
+        assert destination.getvalue() == b"jpeg"
+        assert client.cost_snapshot()["retries_by_status"] == {"410": 1}
+
+    @patch("fotoware_client.client.OAuthAuthenticator")
+    def test_a_rendition_gone_twice_is_an_error(self, mock_auth: Mock) -> None:
+        client = FotoWareClient("https://fotoware.example.com", "id", "secret")
+
+        with (
+            patch.object(client, "_get_rendition_url_once", return_value="https://f/t/x.jpg"),
+            patch.object(client, "_stream_to_file", side_effect=self._gone()) as stream,
+        ):
+            with pytest.raises(APIError) as exc_info:
+                client.download_original_to_file("/a/1.jpg.info", io.BytesIO())
+
+        assert exc_info.value.status_code == 410
+        assert stream.call_count == 2
+
+    @patch("fotoware_client.client.OAuthAuthenticator")
+    def test_other_errors_are_not_repeated(self, mock_auth: Mock) -> None:
+        client = FotoWareClient("https://fotoware.example.com", "id", "secret")
+
+        with (
+            patch.object(client, "_get_rendition_url_once", return_value="https://f/t/x.jpg"),
+            patch.object(
+                client,
+                "_stream_to_file",
+                side_effect=APIError("HTTP 403 error", status_code=403),
+            ) as stream,
+        ):
+            with pytest.raises(APIError):
+                client.download_original_to_file("/a/1.jpg.info", io.BytesIO())
+
+        assert stream.call_count == 1
+
+    @patch("fotoware_client.client.OAuthAuthenticator")
+    def test_a_rendition_gone_while_polling_is_requested_anew(self, mock_auth: Mock) -> None:
+        client = FotoWareClient("https://fotoware.example.com", "id", "secret")
+
+        with patch.object(
+            client,
+            "_get_rendition_url_once",
+            side_effect=[self._gone(), "https://f/task-2/file.jpg"],
+        ):
+            assert client.get_rendition_url("/a/1.jpg.info") == "https://f/task-2/file.jpg"
+
+        with patch.object(client, "_download_original_once", side_effect=[self._gone(), b"bytes"]):
+            assert client.download_original("/a/1.jpg.info") == b"bytes"
