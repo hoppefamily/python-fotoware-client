@@ -211,3 +211,20 @@ def test_a_rendition_not_ready_in_time_is_an_error(client: FakeClient) -> None:
     ):
         with pytest.raises(APIError, match="not ready after 1s"):
             Rendition(client, "/a/1.jpg.info").read()  # type: ignore[arg-type]
+
+
+def test_a_rendition_may_have_its_own_time_limit(client: FakeClient) -> None:
+    client.task_answers = [False] * 10
+    clock = iter(range(0, 100))
+
+    with (
+        patch("fotoware_client.extensions.time.sleep"),
+        patch("fotoware_client.extensions.time.monotonic", side_effect=lambda: next(clock)),
+    ):
+        with pytest.raises(APIError, match="not ready after 3s"):
+            Rendition(client, "/a/1.jpg.info", timeout=3).read()  # type: ignore[arg-type]
+
+
+def test_a_time_limit_that_cannot_work_is_refused(client: FakeClient) -> None:
+    with pytest.raises(ValueError):
+        Rendition(client, "/a/1.jpg.info", timeout=0)  # type: ignore[arg-type]
