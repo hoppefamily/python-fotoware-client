@@ -39,7 +39,7 @@ repos:
   # system` needed mypy to be installed already, which it is not on a CI
   # runner -- "Executable `mypy` not found" on every run.
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v2.3.1
+    rev: v2.4.0
     hooks:
       - id: mypy
         pass_filenames: false
