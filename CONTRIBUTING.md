@@ -1,12 +1,10 @@
 # Contributing
 
-This template follows the Foerde Baumarkt engineering guidance.
-
-- Editor-agnostic: do not commit editor-specific files (see docs/editor-agnostic.md)
-- Pre-commit hooks: install with `pre-commit install` for automated quality checks
-- CI must pass: Pre-commit, Ruff lint/format, MyPy, PyTest, Gitleaks
-- No secrets in code or logs
-
-## Local workflow
-
-Use the Makefile/CLI documented in docs/ci-cd.md, or leverage pre-commit hooks for automated quality assurance.
+- **One call, one request.** The client does what the FotoWare API does and
+  nothing more: no hidden batching, repeated queries or retries beyond the
+  configured policy. Knowledge of a particular archive (its fields, filters or
+  folders) belongs in the applications, not here.
+- **Checks.** `make lint type test deadcode`; CI runs pre-commit, pytest and
+  gitleaks on every pull request. Install the hooks with `pre-commit install`.
+- **Editor-agnostic:** no editor-specific files (see docs/editor-agnostic.md).
+- **No secrets** in code, tests or logs.

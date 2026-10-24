@@ -1,7 +1,7 @@
 # python-fotoware-client
 
-[![tests](https://github.com/foerdebaumarkt/python-fotoware-client/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/foerdebaumarkt/python-fotoware-client/actions/workflows/tests.yml)
-[![pre-commit](https://github.com/foerdebaumarkt/python-fotoware-client/actions/workflows/pre-commit.yml/badge.svg?branch=main)](https://github.com/foerdebaumarkt/python-fotoware-client/actions/workflows/pre-commit.yml)
+[![tests](https://github.com/hoppefamily/python-fotoware-client/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/hoppefamily/python-fotoware-client/actions/workflows/tests.yml)
+[![pre-commit](https://github.com/hoppefamily/python-fotoware-client/actions/workflows/pre-commit.yml/badge.svg?branch=main)](https://github.com/hoppefamily/python-fotoware-client/actions/workflows/pre-commit.yml)
 
 A thin, read-only Python client for the [FotoWare](https://www.fotoware.com/)
 API (FotoWeb). It does what the API does and shows what that costs; it knows
@@ -93,7 +93,7 @@ All derive from `FotoWareError`:
 ## Install
 
 ```bash
-pip install "python-fotoware-client @ git+https://github.com/foerdebaumarkt/python-fotoware-client.git@v0.4.0"
+pip install "python-fotoware-client @ git+https://github.com/hoppefamily/python-fotoware-client.git@v0.4.0"
 ```
 
 ## Development

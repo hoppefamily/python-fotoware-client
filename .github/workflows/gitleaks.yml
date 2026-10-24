@@ -1,9 +1,8 @@
 name: gitleaks
 
-# Secret scanning, run by the org's shared workflow; see
-# https://github.com/foerdebaumarkt/.github/blob/main/docs/gitleaks.md
-# Pull requests and pushes are scanned for their own commits, the weekly run
-# reads the whole history.
+# Secret scanning over the whole history. Pull requests and pushes are
+# scanned, and a weekly run catches what a new rule finds in old commits.
+# The pre-commit hook scans each commit before it is made.
 
 on:
   pull_request:
@@ -18,4 +17,12 @@ permissions:
 
 jobs:
   gitleaks:
-    uses: foerdebaumarkt/.github/.github/workflows/gitleaks.yml@gitleaks-v1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Scan the history
+        run: >-
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1
+          git /repo --redact --verbose --exit-code 1

@@ -21,10 +21,6 @@ speaks about code that was already in the tree.
 not among the scanned paths in `[tool.vulture]`, so a function whose only
 caller is its own test counts as uncalled. See `make deadcode`.
 
-The organization also offers a shared workflow,
-`foerdebaumarkt/.github/.github/workflows/ci-python.yml`, which a project can
-call instead of running lint and tests itself.
-
 ## Pre-commit Setup
 
 The repository includes a comprehensive pre-commit configuration with:
