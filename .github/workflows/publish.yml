@@ -1,0 +1,57 @@
+name: publish
+
+# Uploads a release to PyPI by trusted publishing: PyPI trusts this workflow
+# in this repository and the `pypi` environment, so no API token is stored
+# anywhere. Runs when a GitHub release is published; the release's tag must
+# name the package version (v0.2.0 for 0.2.0).
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - name: The tag names the package version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          project=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          package=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/fotoware_client/__init__.py)
+          if [ "$TAG" != "v$project" ] || [ "$project" != "$package" ]; then
+            echo "::error::tag $TAG, pyproject $project, __version__ $package: they must agree"
+            exit 1
+          fi
+      - name: Build
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          python -m twine check --strict dist/*
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/python-fotoware-client/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@v1.14.3

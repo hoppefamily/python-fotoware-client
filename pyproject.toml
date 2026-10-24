@@ -34,6 +34,9 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+fotoware_client = ["py.typed"]
+
 [tool.vulture]
 # src/ and any scripts, deliberately without tests/: a function whose only
 # caller is its own test then has no caller at all and gets reported. With
