@@ -1,10 +1,12 @@
 """What a FotoWare search may ask, and what it cost.
 
 Measured on 2026-10-23 against a FotoWeb 8.1.1223.0 tenant. Check these again
-when the server version changes.
+when the server version changes; an installation that differs passes its own
+values in fotoware_client.ServerSettings.
 
-- **25 assets per answer, fixed.** ``pageSize`` is ignored; further hits come
-  only through ``paging.next``.
+- **The answers came in pages of 25**, and ``pageSize`` was ignored. FotoWare
+  guarantees no page size ("do not assume the number of elements per page"),
+  so the client counts nothing and follows ``paging.next`` until it ends.
 - **The cost is per answer, not per asset.** An answer with hits took about
   0.4 s one after another and about 1 s at 15 in parallel, whether it held 1
   asset or 25. An empty answer took 130-220 ms.
@@ -31,11 +33,8 @@ from dataclasses import dataclass, field
 
 from fotoware_client.exceptions import FotoWareError
 
-PAGE_SIZE = 25
-"""Assets per search answer. Fixed by FotoWare."""
-
 TERM_OVERHEAD = 33
-"""What a term adds to the translated query besides its value."""
+"""What a term adds to the translated query besides its value (measured default)."""
 
 QUERY_SIZE_LIMIT = 2000
 """Where FotoWare starts to answer wrongly, by :func:`estimate_query_size`."""
@@ -47,18 +46,18 @@ _OPERATORS = frozenset({"AND", "OR", "NOT"})
 _TOKEN = re.compile(r"[^\s()]+")
 
 
-def estimate_query_size(query: str) -> int:
+def estimate_query_size(query: str, term_overhead: int = TERM_OVERHEAD) -> int:
     """The size FotoWare's translation of *query* will have, estimated.
 
     Each term counts the length of its value (after ``field:``, if it has one)
-    plus :data:`TERM_OVERHEAD`. Operators, brackets and spaces count nothing.
+    plus *term_overhead*. Operators, brackets and spaces count nothing.
     """
     size = 0
     for token in _TOKEN.findall(query):
         if token in _OPERATORS:
             continue
         _, _, value = token.rpartition(":")
-        size += len(value) + TERM_OVERHEAD
+        size += len(value) + term_overhead
     return size
 
 
@@ -75,9 +74,11 @@ class QueryTooLargeError(FotoWareError):
         self.budget = budget
 
 
-def check_query_size(query: str, budget: int = QUERY_SIZE_BUDGET) -> None:
+def check_query_size(
+    query: str, budget: int = QUERY_SIZE_BUDGET, term_overhead: int = TERM_OVERHEAD
+) -> None:
     """Raise :class:`QueryTooLargeError` when *query* is estimated over *budget*."""
-    size = estimate_query_size(query)
+    size = estimate_query_size(query, term_overhead)
     if size > budget:
         raise QueryTooLargeError(estimated_size=size, budget=budget)
 

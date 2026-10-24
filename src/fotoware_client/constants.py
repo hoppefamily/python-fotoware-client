@@ -9,12 +9,5 @@ ACCEPT_ASSETLIST = {"Accept": "application/vnd.fotoware.assetlist+json"}
 ACCEPT_ASSET = {"Accept": "application/vnd.fotoware.asset+json"}
 ACCEPT_DOWNLOAD = {"Accept": "application/vnd.fotoware.download+json"}
 
-# OAuth endpoint path (relative to tenant URL)
-OAUTH_TOKEN_PATH = "/fotoweb/oauth2/token"
-
-# API endpoint path (relative to tenant URL)
-API_ME_PATH = "/fotoweb/me"
-
 # Request timeouts (in seconds)
 DEFAULT_TIMEOUT = 30
-DOWNLOAD_TIMEOUT = 120

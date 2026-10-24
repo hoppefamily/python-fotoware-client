@@ -14,7 +14,6 @@ from fotoware_client.exceptions import (
     RetryExhaustedError,
 )
 from fotoware_client.limits import (
-    PAGE_SIZE,
     QUERY_SIZE_BUDGET,
     QUERY_SIZE_LIMIT,
     QueryTooLargeError,
@@ -22,8 +21,9 @@ from fotoware_client.limits import (
 )
 from fotoware_client.models import Archive, Asset, SearchResult
 from fotoware_client.retry import NO_RETRY, STANDARD_RETRY, RetryConfig
+from fotoware_client.settings import ServerSettings
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     # Client
@@ -44,11 +44,12 @@ __all__ = [
     "ConfigurationError",
     "RetryExhaustedError",
     "QueryTooLargeError",
+    # Installation
+    "ServerSettings",
     # Credentials
     "credentials_file",
     "load_credentials",
     # Limits
-    "PAGE_SIZE",
     "QUERY_SIZE_BUDGET",
     "QUERY_SIZE_LIMIT",
     "estimate_query_size",
