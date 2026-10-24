@@ -136,4 +136,4 @@ Pre-commit hooks: `pip install pre-commit && pre-commit install`.
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+MIT, see [LICENSE](https://github.com/hoppefamily/python-fotoware-client/blob/main/LICENSE).
