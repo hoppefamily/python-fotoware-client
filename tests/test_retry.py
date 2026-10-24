@@ -68,7 +68,7 @@ def _client(server: _Server, config: RetryConfig = FAST) -> FotoWareClient:
 
 
 def _search(client: FotoWareClient, server: _Server) -> None:
-    client.search_assets(f"{server.url}/fotoweb/archives/5000/", "631:1")
+    client.search(f"{server.url}/fotoweb/archives/5000/", "631:1")
 
 
 @pytest.mark.parametrize("status", [502, 503, 504])
@@ -147,7 +147,7 @@ def test_a_request_that_cannot_be_sent_is_not_called_unreachable(server: _Server
     client = _client(server)
 
     with pytest.raises(APIError, match="not sent"):
-        client.download_bytes("not-a-url")
+        client.get_asset("ftp://example.com/asset.info")
 
     assert server.hits == 0
 
@@ -179,7 +179,7 @@ def test_an_unreachable_server_is_exhausted() -> None:
         client = FotoWareClient("http://127.0.0.1:9", "id", "secret", retry_config=FAST)
 
     with pytest.raises(RetryExhaustedError):
-        client.search_assets("http://127.0.0.1:9/fotoweb/archives/5000/", "631:1")
+        client.search("http://127.0.0.1:9/fotoweb/archives/5000/", "631:1")
 
     assert client.cost_snapshot()["retries"] == 2
 

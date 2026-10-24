@@ -23,7 +23,7 @@ from fotoware_client.models import Archive, Asset, SearchResult
 from fotoware_client.retry import NO_RETRY, STANDARD_RETRY, RetryConfig
 from fotoware_client.settings import ServerSettings
 
-__version__ = "0.2.3"
+__version__ = "0.3.0"
 
 __all__ = [
     # Client

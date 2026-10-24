@@ -23,18 +23,25 @@ get_backoff_time
 
 # The public API: called by the library's users, not by the library.
 from_env
-get_asset
 cost_snapshot
-validate_connection
+get_api_descriptor
+get_archives
+get_archive
+get_metadata_editor
+search
+get_page
+get_asset
+request_rendition
+get_rendition_task
+# The extensions (fotoware_client.extensions).
 list_archives
-get_field_labels
+field_labels
 iter_search
-get_download_url
-download_bytes
-download_original
-download_original_to_file
-download_rendition_to_file
-get_rendition_url
+Rendition
+url
+write_to
+read
+save
 invalidate
 get_field
 get_field_values
