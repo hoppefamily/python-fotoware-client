@@ -3,9 +3,30 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "project_name"
-version = "0.0.0"
+name = "python-fotoware-client"
+version = "0.4.0"
+description = "A thin, honest client for the FotoWare API: one call, one request; refuses queries FotoWare would answer wrongly; counts what each request costs"
+readme = "README.md"
 requires-python = ">=3.14,<3.15"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["fotoware", "fotoweb", "api", "client"]
+authors = [{ name = "Förde Baumarkt" }]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
+]
+dependencies = [
+    "requests>=2.31.0",
+    "urllib3>=2.6.3,<3",
+]
+
+[project.urls]
+Homepage = "https://github.com/foerdebaumarkt/python-fotoware-client"
+Source = "https://github.com/foerdebaumarkt/python-fotoware-client"
+Issues = "https://github.com/foerdebaumarkt/python-fotoware-client/issues"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

@@ -10,3 +10,31 @@ The file is never imported; vulture reads it as a list of usages. Regenerate
 candidates with `vulture --make-whitelist`, then keep only what you can
 justify.
 """
+
+# Python passes these to __exit__ (FotoWareClient, OAuthAuthenticator).
+exc_type
+exc_val
+exc_tb
+tb
+
+# urllib3 reads these on the Retry subclass (retry.ObservedRetry).
+RETRY_AFTER_STATUS_CODES
+get_backoff_time
+
+# The public API: called by the library's users, not by the library.
+from_env
+get_asset
+cost_snapshot
+validate_connection
+list_archives
+get_field_labels
+iter_search
+get_download_url
+download_bytes
+download_original
+download_original_to_file
+download_rendition_to_file
+invalidate
+get_field
+get_field_values
+doctype

@@ -7,9 +7,9 @@ on:
 
 jobs:
   pytest:
-    # The org variable LINUX_RUNNER names the self-hosted Mac mini; see the
-    # self-hosted-runner README for moving jobs back while it is down.
-    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
+    # GitHub-hosted, not the org's self-hosted runner: this repo is meant to
+    # go public, and a fork's pull request must never run on our machine.
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
     - uses: actions/setup-python@v7

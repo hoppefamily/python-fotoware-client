@@ -44,6 +44,7 @@ repos:
       - id: mypy
         pass_filenames: false
         language_version: python3.14
+        additional_dependencies: [types-requests, "urllib3>=2.6.3,<3"]
         args:
           - --config-file=mypy.ini
           - .

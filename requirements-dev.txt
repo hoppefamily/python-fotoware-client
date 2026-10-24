@@ -2,3 +2,4 @@ ruff
 mypy
 vulture
 pytest
+types-requests
