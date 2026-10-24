@@ -161,9 +161,7 @@ class FotoWareClient:
             NotFoundError: If there is no such asset
             APIError: If the request fails
         """
-        response = self._request("GET", self.resolve(asset_href), headers=ACCEPT_ASSET)
-        asset = Asset.from_json(response.json())
-        response.close()
+        asset = Asset.from_json(self._get_json(self.resolve(asset_href), headers=ACCEPT_ASSET))
         return asset
 
     def cost_snapshot(self) -> dict[str, object]:
@@ -194,9 +192,9 @@ class FotoWareClient:
         me_url = urljoin(self.tenant_url + "/", self.settings.api_descriptor_path.lstrip("/"))
 
         try:
-            response = self._request("GET", me_url, headers=ACCEPT_FULL_DESCRIPTOR)
-            response.json()  # Validate response is valid JSON
-            response.close()
+            self._get_json(
+                me_url, headers=ACCEPT_FULL_DESCRIPTOR
+            )  # Validate response is valid JSON
             logger.debug("FotoWare API connection validated successfully")
         except Exception as e:
             logger.error("FotoWare API connection validation failed: %s", e)
@@ -210,6 +208,19 @@ class FotoWareClient:
         """
         token = self._auth.get_access_token()
         return {"Authorization": f"Bearer {token}"}
+
+    def _get_json(self, url: str, **kwargs: Any) -> Any:
+        """GET *url* and return its JSON; the response is closed either way.
+
+        Raises:
+            requests.JSONDecodeError: If the answer is no JSON
+            The errors of _request
+        """
+        response = self._request("GET", url, **kwargs)
+        try:
+            return response.json()
+        finally:
+            response.close()
 
     def _request(
         self,
@@ -324,17 +335,13 @@ class FotoWareClient:
 
         # The API descriptor names the archives list, as a path on the tenant
         me_url = urljoin(self.tenant_url + "/", self.settings.api_descriptor_path.lstrip("/"))
-        response = self._request("GET", me_url, headers=ACCEPT_FULL_DESCRIPTOR)
-        archives_path = response.json().get("archives")
-        response.close()
+        archives_path = self._get_json(me_url, headers=ACCEPT_FULL_DESCRIPTOR).get("archives")
         if not isinstance(archives_path, str) or not archives_path:
             raise APIError("No archives link found in API descriptor")
         archives_href = urljoin(self.tenant_url + "/", archives_path)
 
         # Fetch archives
-        response = self._request("GET", archives_href, headers=ACCEPT_COLLECTIONLIST)
-        archives_data = response.json()
-        response.close()
+        archives_data = self._get_json(archives_href, headers=ACCEPT_COLLECTIONLIST)
 
         # Parse archives
         archives = []
@@ -363,17 +370,13 @@ class FotoWareClient:
                 editor lists no fields
             KeyError: If the editor's answer has another shape
         """
-        response = self._request("GET", self.resolve(archive_href), headers=ACCEPT_COLLECTIONINFO)
-        archive = response.json()
-        response.close()
+        archive = self._get_json(self.resolve(archive_href), headers=ACCEPT_COLLECTIONINFO)
         editor_href = (archive.get("metadataEditor") or {}).get("href")
         if not editor_href:
             raise APIError(f"Archive {archive_href} links no metadata editor")
 
         editor_url = urljoin(self.tenant_url + "/", editor_href.lstrip("/"))
-        response = self._request("GET", editor_url, headers=ACCEPT_JSON)
-        editor = response.json()
-        response.close()
+        editor = self._get_json(editor_url, headers=ACCEPT_JSON)
 
         labels: dict[str, str] = {}
         for region in editor["detailRegions"]:
@@ -428,9 +431,9 @@ class FotoWareClient:
             page = self.next_page(page)
 
     def _search_page(self, url: str, *, params: dict[str, str] | None = None) -> SearchResult:
-        response = self._request("GET", url, params=params, headers=ACCEPT_ASSETLIST)
-        result = SearchResult.from_json(response.json())
-        response.close()
+        result = SearchResult.from_json(
+            self._get_json(url, params=params, headers=ACCEPT_ASSETLIST)
+        )
         self._counters.count_search_page(empty=not result.assets)
         return result
 
@@ -454,9 +457,7 @@ class FotoWareClient:
 
         try:
             # Get asset with download info
-            response = self._request("GET", self.resolve(asset_href), headers=ACCEPT_DOWNLOAD)
-            data = response.json()
-            response.close()
+            data = self._get_json(self.resolve(asset_href), headers=ACCEPT_DOWNLOAD)
 
             # Look for direct URL in attributes
             if "attributes" in data and "downloadUrl" in data["attributes"]:
@@ -469,9 +470,7 @@ class FotoWareClient:
                     download_href = link.get("href")
                     if download_href:
                         # Fetch presigned URL
-                        response = self._request("GET", download_href, headers=ACCEPT_DOWNLOAD)
-                        download_data = response.json()
-                        response.close()
+                        download_data = self._get_json(download_href, headers=ACCEPT_DOWNLOAD)
                         result_url: str | None = download_data.get("url") or download_data.get(
                             "href"
                         )
@@ -548,9 +547,7 @@ class FotoWareClient:
         logger.debug("get_rendition_url: Starting for asset=%s", asset_href)
 
         # Step 1: Get asset metadata with renditions
-        response = self._request("GET", self.resolve(asset_href), headers=ACCEPT_ASSET)
-        asset_data = response.json()
-        response.close()
+        asset_data = self._get_json(self.resolve(asset_href), headers=ACCEPT_ASSET)
 
         # Step 2: Find the rendition asked for, the original unless named
         renditions = asset_data.get("renditions", [])
@@ -588,9 +585,7 @@ class FotoWareClient:
 
         # Step 3: Get rendition service URL
         me_url = urljoin(self.tenant_url + "/", self.settings.api_descriptor_path.lstrip("/"))
-        response = self._request("GET", me_url, headers=ACCEPT_FULL_DESCRIPTOR)
-        me_data = response.json()
-        response.close()
+        me_data = self._get_json(me_url, headers=ACCEPT_FULL_DESCRIPTOR)
 
         rendition_service_url = me_data.get("services", {}).get("rendition_request")
         if not rendition_service_url:
@@ -618,11 +613,10 @@ class FotoWareClient:
         )
 
         # Get polling URL from Location header or response body
-        polling_url = response.headers.get("Location")
-        if not polling_url:
-            response_data = response.json()
+        try:
+            polling_url = response.headers.get("Location") or response.json().get("href")
+        finally:
             response.close()
-            polling_url = response_data.get("href")
 
         if not polling_url:
             raise APIError(
@@ -713,9 +707,7 @@ class FotoWareClient:
         logger.debug("download_original: Starting for asset=%s", asset_href)
 
         # Step 1: Get asset metadata with renditions
-        response = self._request("GET", self.resolve(asset_href), headers=ACCEPT_ASSET)
-        asset_data = response.json()
-        response.close()
+        asset_data = self._get_json(self.resolve(asset_href), headers=ACCEPT_ASSET)
 
         # Step 2: Find the original rendition
         renditions = asset_data.get("renditions", [])
@@ -750,9 +742,7 @@ class FotoWareClient:
 
         # Step 3: Get rendition service URL
         me_url = urljoin(self.tenant_url + "/", self.settings.api_descriptor_path.lstrip("/"))
-        response = self._request("GET", me_url, headers=ACCEPT_FULL_DESCRIPTOR)
-        me_data = response.json()
-        response.close()
+        me_data = self._get_json(me_url, headers=ACCEPT_FULL_DESCRIPTOR)
 
         rendition_service_url = me_data.get("services", {}).get("rendition_request")
         if not rendition_service_url:
@@ -781,11 +771,10 @@ class FotoWareClient:
         )
 
         # Get polling URL from Location header or response body
-        polling_url = response.headers.get("Location")
-        if not polling_url:
-            response_data = response.json()
+        try:
+            polling_url = response.headers.get("Location") or response.json().get("href")
+        finally:
             response.close()
-            polling_url = response_data.get("href")
 
         if not polling_url:
             raise APIError(
