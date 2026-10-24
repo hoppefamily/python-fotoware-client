@@ -122,7 +122,7 @@ All derive from `FotoWareError`:
 ## Install
 
 ```bash
-pip install "python-fotoware-client @ git+https://github.com/hoppefamily/python-fotoware-client.git@v0.2.0"
+pip install python-fotoware-client
 ```
 
 ## Development
