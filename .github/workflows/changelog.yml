@@ -1,0 +1,36 @@
+name: changelog
+
+# A pull request that changes the package also changes CHANGELOG.md. A change
+# no user notices -- a refactor, a docstring -- says so with the label
+# skip-changelog. Tests, docs and CI do not touch src/ and are not asked.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: An entry for a change to the package
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          SKIP: ${{ contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
+        run: |
+          changed=$(git diff --name-only "$BASE" HEAD)
+          if ! grep -q '^src/' <<< "$changed"; then
+            echo "The package is unchanged."
+          elif grep -qx 'CHANGELOG.md' <<< "$changed"; then
+            echo "CHANGELOG.md has an entry."
+          elif [ "$SKIP" = true ]; then
+            echo "Labelled skip-changelog."
+          else
+            echo "::error::src/ changed but CHANGELOG.md did not. Add an entry under [Unreleased], or label the pull request skip-changelog if no user would notice."
+            exit 1
+          fi
