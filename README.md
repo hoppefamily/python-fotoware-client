@@ -31,7 +31,9 @@ their trademarks.
   The waits double from 1 s and carry jitter, so parallel callers do not
   all ask again at the same moment; a `Retry-After` is kept as sent.
 - **Counts the cost.** `cost_snapshot()` reports requests, retries, errors,
-  search pages and empty search pages.
+  search pages and empty search pages. A 410 Gone counts as `gone`, not as an
+  error: it is how a rendition task FotoWare cleaned up answers, and
+  `Rendition` requests such a rendition anew.
 - OAuth client credentials with automatic token refresh; context manager.
 - **Takes hrefs as FotoWare gives them.** Answers carry paths on the tenant;
   every call that takes an href accepts a path or a full URL.

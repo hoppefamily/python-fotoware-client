@@ -91,11 +91,18 @@ class RequestCounters:
     HTTP requests sent are their sum. ``search_pages`` and ``empty_search_pages``
     are the search answers among the requests; an empty one is cheap, a full or
     partial one costs the same.
+
+    ``gone`` counts 410 answers apart from ``errors``. A rendition task that
+    FotoWare has cleaned up answers 410, which is a state of the rendition
+    protocol rather than a failure: :class:`~fotoware_client.extensions.Rendition`
+    requests the rendition anew, and usually gets it. ``errors`` counts the
+    answers and exceptions that were failures.
     """
 
     requests: int = 0
     retries: int = 0
     errors: int = 0
+    gone: int = 0
     search_pages: int = 0
     empty_search_pages: int = 0
     retries_by_status: dict[str, int] = field(default_factory=dict)
@@ -108,6 +115,10 @@ class RequestCounters:
     def count_error(self) -> None:
         with self._lock:
             self.errors += 1
+
+    def count_gone(self) -> None:
+        with self._lock:
+            self.gone += 1
 
     def count_search_page(self, *, empty: bool) -> None:
         with self._lock:
@@ -127,6 +138,7 @@ class RequestCounters:
                 "requests": self.requests,
                 "retries": self.retries,
                 "errors": self.errors,
+                "gone": self.gone,
                 "search_pages": self.search_pages,
                 "empty_search_pages": self.empty_search_pages,
                 "retries_by_status": dict(self.retries_by_status),

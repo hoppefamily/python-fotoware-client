@@ -259,8 +259,11 @@ class FotoWareClient:
 
         if response.status_code < 400:
             return response
-        self._counters.count_error()
         status_code = response.status_code
+        if status_code == 410:
+            self._counters.count_gone()
+        else:
+            self._counters.count_error()
         response_text = response.text
         response.close()
         if status_code == 429:
