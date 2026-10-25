@@ -42,8 +42,8 @@ class RetryConfig:
             one is cut to this.
         jitter: How much of each wait is left to chance, 0 to 1. With the
             default 0.5 a wait of 2 s becomes 1 to 2 s. Callers running many
-            requests in parallel -- the importer runs 15 -- would otherwise
-            all ask again at the same moment, just as the server recovers.
+            requests in parallel would otherwise all ask again at the same
+            moment, just as the server recovers.
             A ``Retry-After`` the server sends is kept as it is.
     """
 
