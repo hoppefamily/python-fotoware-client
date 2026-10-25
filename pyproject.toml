@@ -27,6 +27,7 @@ dependencies = [
 Homepage = "https://github.com/hoppefamily/python-fotoware-client"
 Source = "https://github.com/hoppefamily/python-fotoware-client"
 Issues = "https://github.com/hoppefamily/python-fotoware-client/issues"
+Changelog = "https://github.com/hoppefamily/python-fotoware-client/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
