@@ -99,6 +99,20 @@ def test_a_500_is_not_retried(server: _Server) -> None:
     assert client.cost_snapshot()["errors"] == 1
 
 
+def test_a_410_counts_as_gone_not_as_an_error(server: _Server) -> None:
+    """A cleaned-up rendition task answers 410; Rendition then asks anew."""
+    server.script = [(410, {})]
+    client = _client(server)
+
+    with pytest.raises(APIError) as exc_info:
+        client.get_rendition_task(f"{server.url}/fotoweb/me/background-tasks/1")
+
+    assert exc_info.value.status_code == 410
+    assert server.hits == 1
+    snapshot = client.cost_snapshot()
+    assert (snapshot["gone"], snapshot["errors"]) == (1, 0)
+
+
 def test_a_429_waits_as_retry_after_says(server: _Server) -> None:
     """The backoff would be 30 s; Retry-After says 1."""
     server.script = [(429, {"Retry-After": "1"})]
