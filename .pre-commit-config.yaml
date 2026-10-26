@@ -29,7 +29,7 @@ repos:
 
   # Python linting/formatting: ruff + ruff-format
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.9
+    rev: v0.17.2
     hooks:
       - id: ruff
         args: [--fix]
